@@ -98,7 +98,21 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
                 context.Fail("Session unavailable");
         }
     };
+
 });
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("NutrageaStore", policy =>
+    {
+        policy
+            .WithOrigins(
+                "https://twilight-leaf-d8b7.info-anumora.workers.dev")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+
 builder.Services.AddAuthorization(o => o.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
 builder.Services.AddRateLimiter(o =>
 {
@@ -142,16 +156,20 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseRouting();
 app.UseRateLimiter();
-if (app.Environment.IsDevelopment())
-{
+//if (app.Environment.IsDevelopment())
+//{
     app.UseSwagger();
     app.UseSwaggerUI();
-}
+//}
+app.UseCors("NutrageaStore");
 
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
-app.MapGet("/health/live", () => new { status = "alive" }).AllowAnonymous();
+app.MapGet("/health", () => Results.Ok(new
+{
+    status = "Healthy"
+})).AllowAnonymous();
 app.Run();
 public partial class Program
 {
