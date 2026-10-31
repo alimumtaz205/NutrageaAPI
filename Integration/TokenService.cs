@@ -12,12 +12,53 @@ public sealed class JwtSettings
  public int LifetimeMinutes {get;set;}=15;
  public byte[] SigningKey => Convert.FromBase64String(SigningKeyBase64);
  public byte[] EncryptionKey => Convert.FromBase64String(EncryptionKeyBase64);
- public void Validate()
- {
-  if(string.IsNullOrWhiteSpace(Issuer)||string.IsNullOrWhiteSpace(Audience)||SigningKey.Length<64||EncryptionKey.Length!=32||LifetimeMinutes is <1 or >30)
-   throw new InvalidOperationException("JWT settings require issuer/audience, a >=64-byte signing key, a separate 32-byte encryption key, and lifetime 1-30 minutes. Run scripts/Configure-Local.ps1.");
-  if(SigningKey.SequenceEqual(EncryptionKey)) throw new InvalidOperationException("Signing and encryption keys must be different.");
- }
+    public void Validate()
+    {
+        if (string.IsNullOrWhiteSpace(Issuer))
+            throw new InvalidOperationException("Jwt:Issuer is missing.");
+
+        if (string.IsNullOrWhiteSpace(Audience))
+            throw new InvalidOperationException("Jwt:Audience is missing.");
+
+        byte[] signing;
+        byte[] encryption;
+
+        try
+        {
+            signing = Convert.FromBase64String(SigningKeyBase64 ?? "");
+        }
+        catch (FormatException)
+        {
+            throw new InvalidOperationException(
+                "Jwt:SigningKeyBase64 is not valid Base64.");
+        }
+
+        try
+        {
+            encryption = Convert.FromBase64String(EncryptionKeyBase64 ?? "");
+        }
+        catch (FormatException)
+        {
+            throw new InvalidOperationException(
+                "Jwt:EncryptionKeyBase64 is not valid Base64.");
+        }
+
+        if (signing.Length < 64)
+            throw new InvalidOperationException(
+                "Jwt:SigningKeyBase64 must decode to at least 64 bytes.");
+
+        if (encryption.Length != 32)
+            throw new InvalidOperationException(
+                "Jwt:EncryptionKeyBase64 must decode to exactly 32 bytes.");
+
+        if (LifetimeMinutes is < 1 or > 30)
+            throw new InvalidOperationException(
+                "Jwt:LifetimeMinutes must be between 1 and 30.");
+
+        if (signing.SequenceEqual(encryption))
+            throw new InvalidOperationException(
+                "JWT signing and encryption keys must be different.");
+    }
 }
 public sealed class TokenService(JwtSettings settings)
 {
