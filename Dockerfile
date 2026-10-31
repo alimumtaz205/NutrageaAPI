@@ -3,7 +3,7 @@ WORKDIR /src
 
 COPY . .
 
-RUN dotnet publish "backend/Nutragea.Api/Nutragea.Api.csproj" \
+RUN dotnet publish "Nutragea.Commerce.Api.csproj" \
     -c Release \
     -o /app/publish \
     /p:UseAppHost=false
@@ -16,4 +16,4 @@ COPY --from=build /app/publish .
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080
 EXPOSE 8080
 
-ENTRYPOINT ["dotnet", "Nutragea.Api.dll"]
+ENTRYPOINT ["dotnet", "Nutragea.Commerce.Api.dll"]
