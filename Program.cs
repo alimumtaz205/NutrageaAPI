@@ -10,6 +10,7 @@ using Nutragea.Api.Services;
 using Nutragea.Commerce.Services;
 using System.Threading.RateLimiting;
 using System.Security.Cryptography.X509Certificates;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<Db>();
@@ -44,12 +45,63 @@ builder.Services.AddSingleton<IPaymentProvider, CodPaymentProvider>();
 builder.Services.AddHostedService<ReservationExpiry>();
 var data = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, builder.Configuration["Commerce:DataDirectory"] ?? "Data"));
 Directory.CreateDirectory(data);
-var protection = builder.Services.AddDataProtection().SetApplicationName("Nutragea.Commerce").PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(data, "keys")));
-var certPath = builder.Configuration["DataProtection:CertificatePath"];
-if (!string.IsNullOrWhiteSpace(certPath))
-    protection.ProtectKeysWithCertificate(X509CertificateLoader.LoadPkcs12FromFile(certPath, builder.Configuration["DataProtection:CertificatePassword"]));
-else if (!builder.Environment.IsDevelopment())
-    throw new InvalidOperationException("Production requires DataProtection:CertificatePath and protected persistent key storage. See deployment guide.");
+// Persist Data Protection keys in MySQL so they survive Render restarts.
+var connectionString =
+    builder.Configuration.GetConnectionString("MySql");
+
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException(
+        "ConnectionStrings:MySql is missing.");
+}
+
+var certificateBase64 =
+    builder.Configuration["DataProtection:CertificateBase64"];
+
+var certificatePassword =
+    builder.Configuration["DataProtection:CertificatePassword"];
+
+if (string.IsNullOrWhiteSpace(certificateBase64) ||
+    string.IsNullOrWhiteSpace(certificatePassword))
+{
+    throw new InvalidOperationException(
+        "DataProtection:CertificateBase64 and " +
+        "DataProtection:CertificatePassword are required.");
+}
+
+byte[] certificateBytes;
+
+try
+{
+    certificateBytes = Convert.FromBase64String(certificateBase64);
+}
+catch (FormatException)
+{
+    throw new InvalidOperationException(
+        "DataProtection:CertificateBase64 is not valid Base64.");
+}
+
+var certificate = X509CertificateLoader.LoadPkcs12(
+    certificateBytes,
+    certificatePassword,
+    X509KeyStorageFlags.EphemeralKeySet);
+
+if (!certificate.HasPrivateKey)
+{
+    throw new InvalidOperationException(
+        "The Data Protection certificate must include its private key.");
+}
+
+builder.Services
+    .AddDataProtection()
+    .SetApplicationName("Nutragea.Commerce")
+    .ProtectKeysWithCertificate(certificate);
+
+builder.Services.Configure<KeyManagementOptions>(options =>
+{
+    options.XmlRepository =
+        new MySqlDataProtectionRepository(connectionString);
+});
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 builder.Services.AddEndpointsApiExplorer();
